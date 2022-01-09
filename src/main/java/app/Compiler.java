@@ -54,7 +54,6 @@ class Compiler {
                 var start = ops.size();
                 ops.add(Op.Nop.it); // placeholder
                 addOps(o.body, ops, names);
-                ops.add(Op.Merge.it);
                 var end = ops.size();
                 ops.set(start, new Op.Branch(names.indexOf(o.guard.asId()), end)); // patch placeholder
             } else if (s instanceof Parser.While o) {
@@ -62,7 +61,6 @@ class Compiler {
                 ops.add(Op.Nop.it); // placeholder
                 addOps(o.body, ops, names);
                 ops.add(new Op.Jump(start));
-                ops.add(Op.Merge.it);
                 var end = ops.size();
                 ops.set(start, new Op.Branch(names.indexOf(o.guard.asId()), end)); // patch placeholder
             } else

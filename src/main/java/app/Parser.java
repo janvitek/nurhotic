@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.Stack;
 
-import app.Parser.Tok.Kind;
+import app.Parser.Tok.K;
 
 public class Parser {
 
@@ -269,12 +269,12 @@ public class Parser {
         }
     }
 
-    record Tok(Kind k, String v, int p) {
-        enum Kind {
+    record Tok(K k, String v, int p) {
+        enum K {
             IDENT, NUM, STR, DELIM
         }
 
-        public Kind k() {
+        public K k() {
             return k;
         }
 
@@ -321,7 +321,7 @@ public class Parser {
         // Try to eat a number from the stream, store it in the parser
         Tokens num() {
             setBad(!hasNext());
-            if (good() && peek().k().equals(Tok.Kind.NUM)) {
+            if (good() && peek().k().equals(K.NUM)) {
                 try {
                     stringValue = next().v();
                     intValue = Integer.parseInt(stringValue);
@@ -338,7 +338,7 @@ public class Parser {
         Tokens id() {
             setBad(!hasNext());
             var tok = next();
-            if (good() && tok.k().equals(Tok.Kind.IDENT))
+            if (good() && tok.k().equals(K.IDENT))
                 stringValue = tok.v();
             else {
                 setBad(true);
@@ -350,7 +350,7 @@ public class Parser {
         Tokens str() {
             setBad(!hasNext());
             var tok = next();
-            if (good() && tok.k().equals(Tok.Kind.STR))
+            if (good() && tok.k().equals(K.STR))
                 stringValue = tok.v();
             else {
                 setBad(true);
@@ -535,15 +535,15 @@ public class Parser {
                 comment();
                 spaces();
                 if (num())
-                    tokens.add(new Tok(Tok.Kind.NUM, read, pos));
+                    tokens.add(new Tok(K.NUM, read, pos));
                 else if (str())
-                    tokens.add(new Tok(Tok.Kind.STR, read, pos));
+                    tokens.add(new Tok(K.STR, read, pos));
                 else if (id())
-                    tokens.add(new Tok(Tok.Kind.IDENT, read, pos));
+                    tokens.add(new Tok(K.IDENT, read, pos));
                 else
                     for (String delim : delims)
                         if (read(delim)) {
-                            tokens.add(new Tok(Tok.Kind.DELIM, delim, pos));
+                            tokens.add(new Tok(K.DELIM, delim, pos));
                             continue A;
                         }
             }

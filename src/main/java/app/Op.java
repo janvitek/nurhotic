@@ -35,15 +35,6 @@ class Op {
         }
     }
 
-    // Same as Nop, inserted by the compiler at control flow merges.
-    static class Merge extends Op {
-        static final Merge it = new Merge();
-
-        public String toString() {
-            return "merge";
-        }
-    }
-
     // Opcode for function calls and variable assignments
     static class Call extends Op {
         int targetRegister; // the register to write the result into
