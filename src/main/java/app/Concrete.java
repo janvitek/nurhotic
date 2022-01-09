@@ -3,12 +3,14 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.Abstract.AVal;
+import app.Op.Exit;
 import app.Parser.Prog;
 
 class Concrete {
 
     Prog program;
-    State in;
+    IState in;
 
     Concrete(Prog p) {
         program = p;
@@ -16,24 +18,29 @@ class Concrete {
     }
 
     void execute() {
-        State st_in = null;
-        State st_out = in;
-        while (!st_out.equals(st_in)) {
+        IState st_in = null;
+        IState st_out = in;
+        while (!done(st_out.pc())) {
             st_in = st_out;
             var op = Op.get(st_in.pc());
             st_out = op.exec(st_in);
-            App.p(App.pad(op + " ", 14) + st_out);
+            App.p(App.pad(st_in.pc() + " : ", 6) + App.pad(op + " ", 14) + st_out);
         }
         in = st_out;
     }
 
+    boolean done(int pc) {
+        var op = Op.get(pc);
+        return op instanceof Exit e && e.funName.equals("main");
+    }
 }
 
-class State {
+class State implements IState {
     List<Frame> stack = new ArrayList<>();
+    AVal last;
 
     State(int pc) {
-        stack.add(new Frame(pc, new ArrayList<Val>()));
+        stack.add(new Frame(pc, new ArrayList<AVal>()));
     }
 
     private State(State base) {
@@ -46,27 +53,30 @@ class State {
     }
 
     // height of the stack
-    int height() {
+    public int height() {
         return stack.size();
     }
 
-    State pop(Val returnVal) {
+    public State pop(AVal returnVal) {
         var res = new State(this);
+        res.last = last();
         res.stack.remove(stack.size() - 1);
-        var pc = res.pc();
-        var op = Op.code[pc];
-        if (op instanceof Op.Call c)
+        if (res.height() == 0)
+            return res;
+        if (Op.code[res.pc()] instanceof Op.Call c)
             return res.set(c.targetRegister, returnVal);
         throw new RuntimeException("Miscompilation");
     }
 
-    State push(int entryPc, List<Val> args) {
+    public State push(int entryPc, List<AVal> args) {
         var res = new State(this);
         res.stack.add(new Frame(entryPc, args));
         return res;
     }
 
-    State set(int reg, Val value) {
+    public State set(int reg, AVal value) {
+        if (!value.isConcrete())
+            throw new RuntimeException("exec error got abstract value: " + value);
         var res = new State(this);
         res.top().set(reg, value);
         return res;
@@ -79,38 +89,47 @@ class State {
             return false;
     }
 
-    State next(int pc) {
+    public State next(int[] pcs) {
+        if (pcs.length != 1)
+            throw new RuntimeException("concrete execution requires a single target");
+        var pc = pcs[0];
         var res = new State(this);
         res.top().next(pc);
         return res;
     }
 
     public String toString() {
-        return "State(" + top() + (height() > 1 ? " ... " + (height() - 1) : "") + ")";
+        if (height() == 0)
+            return "State()";
+        else
+            return "State(" + top() + (height() > 1 ? " ... " + (height() - 1) : "") + ")";
     }
 
     // return the last value assigned in the top frame, or null
-    Val last() {
-        return top().last();
+    public AVal last() {
+        if (height() == 0)
+            return last;
+        else
+            return top().last();
     }
 
     // return the pc in the top most frame
-    int pc() {
-        return top().pc();
+    public int pc() {
+        return height() == 0 ? -1 : top().pc();
     }
 
     // return value of register i in topmost frame
-    Val getRegister(int i) {
+    public AVal getRegister(int i) {
         return top().get(i);
     }
 }
 
 class Frame {
     int pc;
-    List<Val> regs = new ArrayList<Val>();
-    Val lastValue;
+    List<AVal> regs = new ArrayList<AVal>();
+    AVal lastValue;
 
-    Frame(int pc, List<Val> params) {
+    Frame(int pc, List<AVal> params) {
         this.pc = pc;
         for (var v : params)
             regs.add(v);
@@ -121,18 +140,18 @@ class Frame {
         lastValue = f.lastValue;
     }
 
-    Val get(int reg) {
+    AVal get(int reg) {
         return regs.get(reg);
     }
 
-    void set(int reg, Val value) {
+    void set(int reg, AVal value) {
         lastValue = value;
         while (reg >= regs.size())
             regs.add(null);
         regs.set(reg, value);
     }
 
-    Val last() {
+    AVal last() {
         return lastValue;
     }
 
@@ -150,137 +169,5 @@ class Frame {
             s += i + "=" + regs.get(i) + ",";
         s = s.length() > 0 ? s.substring(0, s.length() - 1) : s;
         return "[" + s + "]";
-    }
-}
-
-class Val {
-    Val get(int i) {
-        return this;
-    }
-
-    enum Kind {
-        STR, NUM, BOTTOM
-    }
-
-    Val add(Val o) {
-        return op("add", o);
-    }
-
-    Val sub(Val o) {
-        return op("sub", o);
-    }
-
-    private Val op(String op, Val o) {
-        var v1 = this.asVec();
-        var v2 = o.asVec();
-        var sz = Math.max(v1.size(), v2.size());
-        var res = new Vec();
-        res.type = Kind.NUM;
-        for (int i = 0; i < sz; i++) {
-            var idx1 = i % v1.size();
-            var idx2 = i % v2.size();
-            var n1 = ((Num) v1.get(idx1)).value;
-            var n2 = ((Num) v2.get(idx2)).value;
-            var val = op.equals("sub") ? n1 - n2 : (op.equals("add") ? n1 + n2 : -1);
-            res = res.set(i, new Num(val));
-        }
-        return res;
-    }
-
-    Val.Vec asVec() {
-        if (this instanceof Num || this instanceof Str)
-            return new Vec(this);
-        else if (this instanceof Vec v)
-            return v;
-        else
-            throw new RuntimeException("Internal error");
-    }
-
-    static class Vec extends Val {
-        Kind type = Kind.BOTTOM;
-        List<Val> values = new ArrayList<Val>();
-
-        Vec() {
-        }
-
-        Vec(Val v) {
-            type = v instanceof Str ? Kind.STR : Kind.NUM;
-            values.add(v);
-        }
-
-        Vec(Vec v) {
-            type = v.type;
-            for (var x : v.values)
-                values.add(x);
-        }
-
-        int size() {
-            return values.size();
-        }
-
-        Val get(int i) {
-            return values.get(i);
-        }
-
-        Vec set(int i, Val vo) {
-            var res = new Vec(this);
-            var v = vo instanceof Vec vec ? vec.get(0) : vo;
-            if (res.type == Kind.BOTTOM)
-                res.type = v instanceof Num ? Kind.NUM : v instanceof Str ? Kind.STR : Kind.BOTTOM;
-            while (i >= res.size())
-                res.values.add(null);
-            if ((v instanceof Str && res.type == Kind.STR) ||
-                    (v instanceof Num && res.type == Kind.NUM)) {
-                res.values.set(i, v);
-                return res;
-            }
-            throw new RuntimeException("type error");
-        }
-
-        public String toString() {
-            if (size() == 1)
-                return values.get(0).toString();
-            var str = "";
-            for (var v : values)
-                str += v + ",";
-            str = str.length() > 0 ? str.substring(0, str.length() - 1) : str;
-            return "c(" + str + ")";
-        }
-    }
-
-    static class Str extends Val {
-        String value;
-
-        Str(String v) {
-            value = v;
-        }
-
-        public String toString() {
-            return "\"" + value + "\"";
-        }
-    }
-
-    static class Num extends Val {
-        int value;
-
-        Num(int v) {
-            value = v;
-        }
-
-        public String toString() {
-            return "" + value;
-        }
-    }
-
-    static class Id extends Val {
-        int register;
-
-        Id(int r) {
-            register = r;
-        }
-
-        public String toString() {
-            return "@" + register;
-        }
     }
 }

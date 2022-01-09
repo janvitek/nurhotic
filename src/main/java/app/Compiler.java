@@ -3,6 +3,7 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.Abstract.AVal;
 import app.Parser.Prog;
 
 class Compiler {
@@ -41,12 +42,12 @@ class Compiler {
     void addOps(List<Parser.Stmt> b, List<Op> ops, List<String> names) {
         for (var s : b) {
             if (s instanceof Parser.Call o) {
-                var vals = new ArrayList<Val>();
+                var vals = new ArrayList<Object>();
                 for (var v : o.params)
                     vals.add(switch (v.kind()) {
-                        case STR -> new Val.Str(v.asStr());
-                        case NUM -> new Val.Num(v.asNum());
-                        case ID -> new Val.Id(names.indexOf(v.asId()));
+                        case STR -> new AVal(v.asStr());
+                        case NUM -> new AVal(v.asNum());
+                        case ID -> names.indexOf(v.asId());
                         default -> null;
                     });
                 ops.add(Op.mkCall(names.indexOf(o.t_var), o.f_name, vals));

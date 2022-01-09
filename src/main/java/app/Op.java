@@ -3,6 +3,9 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.Abstract.AVal;
+import app.Abstract.AVal.BOOL;
+
 // The instruction set of our small bytecode language
 class Op {
 
@@ -10,7 +13,7 @@ class Op {
 
     // Give a source of the form "tgt_reg = fname(vals_1,...)" either build a
     // call to a userdefined fun or to a builtin.
-    static Call mkCall(int tgt_reg, String fname, List<Val> vals) {
+    static Call mkCall(int tgt_reg, String fname, List<Object> vals) {
         return Op.Builtin.isBuiltin(fname) ? new Op.Builtin(tgt_reg, fname, vals)
                 : new Op.Call(tgt_reg, fname, vals);
     }
@@ -20,8 +23,8 @@ class Op {
     }
 
     // the default exec function advance the pc
-    State exec(State in) {
-        return in.next(in.pc() + 1);
+    IState exec(IState in) {
+        return in.next(new int[] { in.pc() + 1 });
     }
 
     // Opcode for doing nothing
@@ -46,10 +49,10 @@ class Op {
     static class Call extends Op {
         int targetRegister; // the register to write the result into
         String funName; // function's name
-        List<Val> args; // argument lists
+        List<Object> args; // argument lists
         int entryPc; // pc of the body
 
-        Call(int tgt_reg, String fname, List<Val> args) {
+        Call(int tgt_reg, String fname, List<Object> args) {
             this.targetRegister = tgt_reg;
             this.funName = fname;
             this.args = args;
@@ -57,10 +60,10 @@ class Op {
 
         // Common behavior between userdef and builtin: marshall
         // the arguments and dereference variables
-        State exec(State in) {
-            var ps = new ArrayList<Val>();
+        IState exec(IState in) {
+            var ps = new ArrayList<AVal>();
             for (var o : args)
-                ps.add(o instanceof Val.Id s ? in.getRegister(s.register) : o);
+                ps.add(o instanceof Integer r ? in.getRegister(r) : o instanceof AVal v ? v : null);
             return in.push(entryPc, ps);
         }
 
@@ -71,13 +74,14 @@ class Op {
         public String toString() {
             var str = "";
             for (var a : args)
-                str += a + ",";
+                str += (a instanceof Integer ? "@" + a : a) + ",";
+            str = str.length() > 0 ? str.substring(0, str.length() - 1) : str;
             return funName + "(" + str + ")";
         }
     }
 
     // Op code for function entry. This is a nop that deals with the merge of
-    // inputs from callers. State at this pc is the merged state in static
+    // inputs from callers. State at this pc is the merged State in static
     // analyses.
     static class Entry extends Op {
         String funName; // which function are we entering, handy for debugging
@@ -104,12 +108,10 @@ class Op {
         // There are two cases to consider:
         // in.height() == 1: means we are returning from main and nothing should be done
         // otherwise: means we were called and have to return a value.
-        State exec(State in) {
-            if (in.height() == 1)
-                return in;
+        IState exec(IState in) {
             var last = in.last(); // return the last assignment made in this call
             var res = in.pop(last);
-            return res.next(res.pc() + 1);
+            return res.next(new int[] { res.pc() + 1 });
         }
 
         public String toString() {
@@ -125,8 +127,8 @@ class Op {
             targetPc = pc;
         }
 
-        State exec(State in) {
-            return in.next(targetPc);
+        IState exec(IState in) {
+            return in.next(new int[] { targetPc });
         }
 
         public String toString() {
@@ -145,10 +147,11 @@ class Op {
         }
 
         // jump to targetPc if guardRegister is 0.
-        State exec(State in) {
+        IState exec(IState in) {
             var v = in.getRegister(guardRegister);
-            var first = v.get(0);
-            var next = first instanceof Val.Num n && n.value != 0 ? in.pc() + 1 : targetPc;
+            var eq = v.eq(new AVal(0));
+            var next = eq == BOOL.N ? new int[] { in.pc() + 1 }
+                    : eq == BOOL.Y ? new int[] { targetPc } : new int[] { in.pc() + 1, targetPc };
             return in.next(next);
         }
 
@@ -167,7 +170,7 @@ class Op {
             return ok;
         }
 
-        Builtin(int tgt_reg, String fname, List<Val> args) {
+        Builtin(int tgt_reg, String fname, List<Object> args) {
             super(tgt_reg, fname, args);
         }
 
@@ -175,46 +178,36 @@ class Op {
             return true;
         }
 
-        State exec(State in) {
-            var ps = new ArrayList<Val>();
+        IState exec(IState in) {
+            var ps = new ArrayList<AVal>();
             for (var o : args)
-                ps.add(o instanceof Val.Id s ? in.getRegister(s.register) : o);
+                ps.add(o instanceof Integer r ? in.getRegister(r) : (AVal) o);
+            AVal res = null;
             if (funName.equals("get")) {
-                var vec = (Val.Vec) ps.get(0);
-                var idx_vec = ps.get(1);
-                var idx_val = idx_vec.get(0);
-                if (idx_val instanceof Val.Num n) {
-                    var res = vec.get(n.value);
-                    return in.set(targetRegister, res).next(in.pc() + 1);
-                }
+                var vec = ps.get(0);
+                var idx = ps.get(1);
+                res = vec.getVal(idx);
             } else if (funName.equals("set")) {
-                var vec = (Val.Vec) ps.get(0);
+                var vec = ps.get(0);
                 var idx = ps.get(1);
                 var val = ps.get(2);
-                if (idx instanceof Val.Num n) {
-                    var res = new Val.Vec(vec);
-                    res.set(n.value, val.get(0));
-                    return in.set(targetRegister, res).next(in.pc() + 1);
-                }
+                res = vec.set(idx, val);
             } else if (funName.equals("c")) {
-                var v = new Val.Vec();
-                for (var a : ps)
-                    v = v.set(v.size(), a.get(0));
-                return in.set(targetRegister, v).next(in.pc() + 1);
+                res = new AVal(ps);
             } else if (funName.equals("add")) {
                 var n1 = ps.get(0);
                 var n2 = ps.get(1);
-                return in.set(targetRegister, n1.add(n2)).next(in.pc() + 1);
+                res = n1.add(n2);
             } else if (funName.equals("sub")) {
                 var n1 = ps.get(0);
                 var n2 = ps.get(1);
-                return in.set(targetRegister, n1.sub(n2)).next(in.pc() + 1);
+                res = n1.sub(n2);
             } else if (funName.equals("length")) {
-                var v1 = ps.get(0).asVec();
-                var sz = new Val.Vec(new Val.Num(v1.size()));
-                return in.set(targetRegister, sz).next(in.pc() + 1);
-            }
-            throw new RuntimeException("Missin builtin " + funName);
+                var v1 = ps.get(0);
+                res = v1.size();
+            } else
+                throw new RuntimeException("Missin builtin " + funName);
+            return in.set(targetRegister, res).next(new int[] { in.pc() + 1 });
         }
     }
 }

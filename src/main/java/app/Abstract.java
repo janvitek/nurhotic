@@ -2,33 +2,63 @@ package app;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import app.Abstract.AVal.BOOL;
 import app.Op.Call;
-import app.Val.Num;
-import app.Val.Str;
+import app.Op.Exit;
+import app.Parser.Prog;
 
-class Abstract {
-
+class Abstract extends Concrete {
     AState[] astates;
     AState init;
     boolean done = false;
+    Set<Integer> pcs = new HashSet<Integer>();
+    Set<Integer> seens = new HashSet<Integer>();
 
-    Abstract() {
+    Abstract(Prog p) {
+        super(p);
         astates = new AState[Op.code.length];
         for (int i = 0; i < astates.length; i++)
-            astates[i] = new AState();
-        init = new AState();
+            astates[i] = new AState(i);
+        init = new AState(14);
+    }
+
+    void seen(int pc) {
+        seens.add(pc);
+    }
+
+    void toSee(int pc) {
+        if (pc >= Op.code.length)
+            return; // trying to add succ of last statmeent.
+        if (!seens.contains(pc)) {
+            pcs.add(pc);
+            seens.add(pc);
+        }
+    }
+
+    void reset() {
+        seens = new HashSet<Integer>();
+    }
+
+    int nextToSee() {
+        for (var i : pcs) {
+            pcs.remove(i);
+            return i;
+        }
+        return Op.code.length - 1;// last insturction
     }
 
     void analyze() {
         while (!done) {
             var prev = astates.clone();
-            for (int pc = 0; pc < astates.length; pc++)
-                transfer(pc);
+            in = init;
+            execute();
             done = equals(astates, prev);
+            reset();
         }
     }
 
@@ -41,52 +71,9 @@ class Abstract {
         return true;
     }
 
-    void merge(int pc, AState st) {
-        astates[pc] = st.merge(astates[pc]);
-    }
-
-    void transfer(int pc) {
-        var op = Op.get(pc);
-        AState st = astates[pc];
-        App.p(App.pad(pc + " : ", 6) + App.pad(op + " ", 14) + st);
-        if (op instanceof Op.Entry o) {
-            merge(pc + 1, st);
-        } else if (op instanceof Op.Exit o) {
-            var last = st.last();
-            st = st.pop();
-            var nm = o.funName;
-            for (int i = 0; i < astates.length; i++)
-                if (Op.get(i) instanceof Op.Call c && c.funName.equals(nm)) {
-                    st = astates[i];
-                    st = st.set(c.targetRegister, last);
-                    merge(i + 1, st);
-                }
-        } else if (op instanceof Op.Nop o) {
-            merge(pc + 1, st);
-        } else if (op instanceof Op.Merge o) {
-            merge(pc + 1, st);
-        } else if (op instanceof Op.Call o) {
-            var ps = new ArrayList<AVal>();
-            for (var v : o.args)
-                if (v instanceof Val.Id s)
-                    ps.add(st.get(s.register));
-                else
-                    ps.add(abs(v));
-            if (o.isbuiltin()) {
-                st = builtin(o, ps, st);
-                merge(pc + 1, st);
-            } else {
-                st = st.push(ps);
-                for (int i = 0; i < astates.length; i++)
-                    if (Op.get(i) instanceof Op.Entry c && c.funName.equals(o.funName))
-                        merge(i, st);
-            }
-        } else if (op instanceof Op.Jump o) {
-            merge(o.targetPc, st);
-        } else if (op instanceof Op.Branch o) {
-            merge(pc + 1, st);
-            merge(o.targetPc, st);
-        }
+    void mergeState(int pc, AState st) {
+        if (pc < astates.length) // there is a case where we try to merge the last statement
+            astates[pc] = astates[pc].merge(st);
     }
 
     AState builtin(Call c, List<AVal> ps, AState in) {
@@ -123,36 +110,57 @@ class Abstract {
 
     }
 
-    AVal abs(Val v) {
-        if (v instanceof Num n) {
-            return new AVal(n.value);
-        } else if (v instanceof Str s) {
-            return new AVal(s.value);
-        }
-        throw new RuntimeException("unreachable");
-    }
-
-    class AState {
+    class AState implements IState {
         List<AVal> values = new ArrayList<AVal>();
-        AVal last;
+        AVal last = AVal.bot;
+        int pc = -1;
 
-        AState top() {
-            return this;
+        AState(int pc) {
+            this.pc = pc;
         }
 
-        AState pop() {
-            return this;
+        AState(AState st) {
+            for (var v : st.values)
+                values.add(v);
+            last = st.last;
+            pc = st.pc;
         }
 
-        AState push(List<AVal> args) {
-            var res = new AState();
-            for (var v : args)
-                res.values.add(v.clone());
-            return res;
+        public int pc() {
+            return pc;
         }
 
-        AState merge(AState st) {
-            var res = new AState();
+        public int height() {
+            throw new RuntimeException("height of an abstract stack unknown");
+        }
+
+        public AState next(int[] pcs_) {
+            for (var pc : pcs_) {
+                mergeState(pc, this);
+                toSee(pc);
+            }
+            return astates[nextToSee()];
+        }
+
+        public AState pop(AVal returnVal) {
+            var nm = Op.code[pc()] instanceof Exit e ? e.funName : null;
+            for (int i = 0; i < astates.length; i++)
+                if (Op.get(i) instanceof Op.Call c && c.funName.equals(nm)) {
+                    mergeState(i, new AState(i).set(c.targetRegister, last));
+                    toSee(i);
+                }
+            return astates[nextToSee()];
+        }
+
+        public AState push(int entryPC, List<AVal> args) {
+            mergeState(entryPC, this);
+            toSee(entryPC);
+            return astates[nextToSee()];
+        }
+
+        public AState merge(IState state) {
+            var st = (AState) state;
+            var res = new AState(pc);
             for (int i = 0; i < Math.max(values.size(), st.values.size()); i++)
                 if (i >= values.size())
                     res.values.add(st.values.get(i));
@@ -165,32 +173,29 @@ class Abstract {
 
         // Hmm... this operation modifies the current state without copying...
         // perhaps ok. but not pretty. What would be an alternative?
-        AVal get(int i) {
+        public AVal getRegister(int i) {
             while (i >= values.size())
                 values.add(AVal.bot);
             return values.get(i);
         }
 
-        AState set(int i, AVal v) {
+        public AState set(int i, AVal v) {
+            last = v;
             var res = clone();
             while (i >= res.values.size())
                 res.values.add(AVal.bot);
+            if (v == null)
+                throw new RuntimeException("values can't be null");
             res.values.set(i, v);
             return res;
         }
 
-        AVal last() {
-            if (last == null)
-                return AVal.bot;
+        public AVal last() {
             return last;
         }
 
         public AState clone() {
-            var res = new AState();
-            for (var v : values) {
-                res.values.add(v.clone());
-            }
-            return res;
+            return new AState(this);
         }
 
         public boolean equals(Object o) {
@@ -216,8 +221,8 @@ class Abstract {
     }
 
     static class AVal {
-        enum BOOL {
-            Y, N, M
+        enum BOOL { // Three value logic
+            Y, N, M // Yes, No, Maybe
         };
 
         private static AVal bot = new AVal();
@@ -297,6 +302,19 @@ class Abstract {
             return r.isScalar();
         }
 
+        boolean isConcrete() {
+            var notC = isBot() || isTop() || r.isTop() || r.isBot() || t.isTop() || t.isBot();
+            if (!notC && isScalar() == BOOL.N) {
+                for (int i = 0; i < r.to; i++)
+                    if (!values.containsKey(i) || !values.get(i).isConcrete())
+                        return false;
+                return true;
+            } else if (!notC && isScalar() == BOOL.Y) {
+                return ifScalarNum != null || ifScalarString != null;
+            } else
+                return false;
+        }
+
         AVal getVal(AVal index) {
             if (isBot() || index.isBot())
                 return bot;
@@ -311,12 +329,12 @@ class Abstract {
             if (index.isScalar() == BOOL.M)
                 return top;
             var idx = index.asNum();
-            var in = idx == null ? BOOL.M : r.in(idx - 1);
+            var in = idx == null ? BOOL.M : r.in(idx);
             if (in == BOOL.Y) {
                 if (isScalar() == BOOL.Y) // idx==0
                     return this;
-                if (values.containsKey(idx - 1)) // source language arrays start at 1
-                    return values.get(idx - 1);
+                if (values.containsKey(idx))
+                    return values.get(idx);
                 else
                     return new AVal(Range.mkScalar(), t);
             } else if (in == BOOL.N) {

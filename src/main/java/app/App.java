@@ -8,7 +8,7 @@ public class App {
         p("Running concrete");
         c.execute();
         p("Done with " + c.in.last());
-        var a = new Abstract();
+        var a = new Abstract(p);
         p("Running abstract");
         a.analyze();
         p("Done with ");
