@@ -10,8 +10,8 @@ public class App {
         p("Done with " + c.in.last());
         var a = new Abstract(p);
         p("Running abstract");
-        a.analyze();
-        p("Done with ");
+        var st = a.analyze();
+        p("Done with " + st.last());
     }
 
     public static void p(String s) {

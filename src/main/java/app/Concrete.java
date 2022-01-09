@@ -3,40 +3,36 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.Op.Exit;
 import app.Parser.Prog;
 
 class Concrete {
 
     Prog program;
-    IState in;
+    protected IState in;
+    protected int mainEntryPC;
+    protected int mainExitPC;
 
     Concrete(Prog p) {
         program = p;
-        in = new State(new Compiler().compile(program));
+        mainEntryPC = new Compiler().compile(program);
+        mainExitPC = Op.exitPC();
+        in = new State(mainEntryPC);
     }
 
-    void execute() {
-        IState st_in = null;
-        IState st_out = in;
-        while (!done(st_out.pc())) {
-            st_in = st_out;
-            var op = Op.get(st_in.pc());
-            st_out = op.exec(st_in);
-            App.p(App.pad(st_in.pc() + " : ", 6) + App.pad(op + " ", 14) + st_out);
+    IState execute() {
+        int pc;
+        while ((pc = in.pc()) != mainExitPC) {
+            var op = Op.get(pc);
+            in = op.exec(in);
+            App.p(App.pad(pc + " : ", 6) + App.pad(op + " ", 14) + in);
         }
-        in = st_out;
-    }
-
-    boolean done(int pc) {
-        var op = Op.get(pc);
-        return op instanceof Exit e && e.funName.equals("main");
+        return in;
     }
 }
 
 class State implements IState {
-    List<Frame> stack = new ArrayList<>();
-    Val last;
+    private List<Frame> stack = new ArrayList<>();
+    private Val last;
 
     State(int pc) {
         stack.add(new Frame(pc, new ArrayList<Val>()));
@@ -52,19 +48,19 @@ class State implements IState {
     }
 
     // height of the stack
-    public int height() {
+    private int height() {
         return stack.size();
     }
 
     public State pop(Val returnVal) {
         var res = new State(this);
-        res.last = last();
+        res.last = returnVal;
         res.stack.remove(stack.size() - 1);
-        if (res.height() == 0)
-            return res;
-        if (Op.code[res.pc()] instanceof Op.Call c)
-            return res.set(c.targetRegister, returnVal);
-        throw new RuntimeException("Miscompilation");
+        if (res.height() > 0) {
+            res = res.set(((Op.Call) Op.get(res.pc())).targetRegister, returnVal);
+            res.top().next(res.pc() + 1);
+        }
+        return res;
     }
 
     public State push(int entryPc, List<Val> args) {

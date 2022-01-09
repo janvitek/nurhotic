@@ -8,13 +8,28 @@ import app.Val.BOOL;
 // The instruction set of our small bytecode language
 class Op {
 
-    static Op[] code; // All the instructions in the current program
+    private static Op[] code; // All the instructions in the current program
 
     // Give a source of the form "tgt_reg = fname(vals_1,...)" either build a
     // call to a userdefined fun or to a builtin.
     static Call mkCall(int tgt_reg, String fname, List<Object> vals) {
         return Op.Builtin.isBuiltin(fname) ? new Op.Builtin(tgt_reg, fname, vals)
                 : new Op.Call(tgt_reg, fname, vals);
+    }
+
+    static void set(Op[] code_) {
+        code = code_;
+    }
+
+    static int length() {
+        return code.length; // last nop nops
+    }
+
+    static int exitPC() {
+        var pos = code.length - 1;
+        while (!(code[pos] instanceof Exit))
+            pos--;
+        return pos;
     }
 
     static Op get(int pc) {
@@ -86,8 +101,7 @@ class Op {
 
     }
 
-    // Opcode for function return. This is a nop that deals with returning
-    // the value to the caller.
+    // Opcode for function return.
     static class Exit extends Op {
         String funName;
 
@@ -95,17 +109,23 @@ class Op {
             this.funName = fname;
         }
 
-        // There are two cases to consider:
-        // in.height() == 1: means we are returning from main and nothing should be done
-        // otherwise: means we were called and have to return a value.
         IState exec(IState in) {
             var last = in.last(); // return the last assignment made in this call
-            var res = in.pop(last);
-            return res.next(new int[] { res.pc() + 1 });
+            return in.pop(last);
         }
 
         public String toString() {
             return "exit_" + funName;
+        }
+    }
+
+    static class MainExit extends Exit {
+        MainExit(String fname) {
+            super(fname);
+        }
+
+        IState exec(IState in) {
+            return in;
         }
     }
 

@@ -5,58 +5,51 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import app.Op.Call;
 import app.Op.Exit;
 import app.Parser.Prog;
 
 class Abstract extends Concrete {
-    State[] astates;
-    State init;
-    boolean done = false;
-    Set<Integer> pcs = new HashSet<Integer>();
-    Set<Integer> seens = new HashSet<Integer>();
+    private State[] astates;
+    private State init;
+    private boolean done = false;
+    private Set<Integer> pcs = new HashSet<Integer>();
+    private Set<Integer> seens = new HashSet<Integer>();
 
     Abstract(Prog p) {
         super(p);
-        astates = new State[Op.code.length];
+        astates = new State[Op.length()];
         for (int i = 0; i < astates.length; i++)
             astates[i] = new State(i);
-        init = new State(14);
+        init = new State(mainEntryPC);
     }
 
-    void seen(int pc) {
-        seens.add(pc);
-    }
-
-    void toSee(int pc) {
-        if (pc >= Op.code.length)
-            return; // trying to add succ of last statmeent.
+    // add pc to the program counters that have to be processed
+    private void toSee(int pc) {
         if (!seens.contains(pc)) {
             pcs.add(pc);
             seens.add(pc);
         }
     }
 
-    void reset() {
-        seens = new HashSet<Integer>();
-    }
-
-    int nextToSee() {
+    // returns the next pc or the exit of main
+    private int nextToSee() {
         for (var i : pcs) {
             pcs.remove(i);
             return i;
         }
-        return Op.code.length - 1;// last insturction
+        return mainExitPC;// last nop before the instruction
     }
 
-    void analyze() {
+    // analyze the program and return the last state
+    IState analyze() {
         while (!done) {
             var prev = astates.clone();
             in = init;
             execute();
             done = equals(astates, prev);
-            reset();
+            seens = new HashSet<Integer>(); // reset the seen
         }
+        return astates[astates.length - 1];
     }
 
     boolean equals(State[] l, State[] r) {
@@ -68,45 +61,12 @@ class Abstract extends Concrete {
         return true;
     }
 
-    void mergeState(int pc, State st) {
-        if (pc < astates.length) // there is a case where we try to merge the last statement
-            astates[pc] = astates[pc].merge(st);
+    private void mergeState(int pc, State st) {
+        astates[pc] = astates[pc].merge(st);
+        toSee(pc);
     }
 
-    State builtin(Call c, List<Val> ps, State in) {
-        var funName = c.funName;
-        var targetRegister = c.targetRegister;
-        if (funName.equals("get")) {
-            var vec = ps.get(0);
-            var idx = ps.get(1);
-            var res = vec.getVal(idx);
-            return in.set(targetRegister, res);
-        } else if (funName.equals("set")) {
-            var vec = ps.get(0);
-            var idx = ps.get(1);
-            var val = ps.get(2);
-            var res = vec.set(idx, val);
-            return in.set(targetRegister, res);
-        } else if (funName.equals("c")) {
-            var v = new Val(ps);
-            return in.set(targetRegister, v);
-        } else if (funName.equals("add")) {
-            var n1 = ps.get(0);
-            var n2 = ps.get(1);
-            return in.set(targetRegister, n1.add(n2));
-        } else if (funName.equals("sub")) {
-            var n1 = ps.get(0);
-            var n2 = ps.get(1);
-            return in.set(targetRegister, n1.sub(n2));
-        } else if (funName.equals("length")) {
-            var v1 = ps.get(0);
-            var len = v1.size();
-            return in.set(targetRegister, len);
-        } else
-            throw new RuntimeException("Missin builtin " + funName);
-
-    }
-
+    // Abstract State - keeps the topmost frame
     class State implements IState {
         List<Val> values = new ArrayList<Val>();
         Val last = Val.bot;
@@ -127,44 +87,34 @@ class Abstract extends Concrete {
             return pc;
         }
 
-        public int height() {
-            throw new RuntimeException("height of an abstract stack unknown");
-        }
-
         public State next(int[] pcs_) {
-            for (var pc : pcs_) {
+            for (var pc : pcs_)
                 mergeState(pc, this);
-                toSee(pc);
-            }
             return astates[nextToSee()];
         }
 
         public State pop(Val returnVal) {
-            var nm = Op.code[pc()] instanceof Exit e ? e.funName : null;
+            var nm = Op.get(pc()) instanceof Exit e ? e.funName : null;
+            last = returnVal;
             for (int i = 0; i < astates.length; i++)
-                if (Op.get(i) instanceof Op.Call c && c.funName.equals(nm)) {
-                    mergeState(i, new State(i).set(c.targetRegister, last));
-                    toSee(i);
-                }
+                if (Op.get(i) instanceof Op.Call c && c.funName.equals(nm))
+                    mergeState(i + 1, new State(i + 1).set(c.targetRegister, last));
             return astates[nextToSee()];
         }
 
         public State push(int entryPC, List<Val> args) {
             mergeState(entryPC, this);
-            toSee(entryPC);
             return astates[nextToSee()];
         }
 
-        public State merge(IState state) {
+        // merges two States keeping the pc of the receiver
+        State merge(IState state) {
             var st = (State) state;
             var res = new State(pc);
+            res.last = Val.merge(last, st.last);
             for (int i = 0; i < Math.max(values.size(), st.values.size()); i++)
-                if (i >= values.size())
-                    res.values.add(st.values.get(i));
-                else if (i >= st.values.size())
-                    res.values.add(values.get(i));
-                else
-                    res.values.add(Val.merge(values.get(i), st.values.get(i)));
+                res.values.add(i >= values.size() ? st.values.get(i)
+                        : i >= st.values.size() ? values.get(i) : Val.merge(values.get(i), st.values.get(i)));
             return res;
         }
 
@@ -178,11 +128,9 @@ class Abstract extends Concrete {
 
         public State set(int i, Val v) {
             last = v;
-            var res = clone();
+            var res = new State(this);
             while (i >= res.values.size())
                 res.values.add(Val.bot);
-            if (v == null)
-                throw new RuntimeException("values can't be null");
             res.values.set(i, v);
             return res;
         }
@@ -191,14 +139,8 @@ class Abstract extends Concrete {
             return last;
         }
 
-        public State clone() {
-            return new State(this);
-        }
-
         public boolean equals(Object o) {
-            if (o instanceof State other) {
-                if (values.size() != other.values.size())
-                    return false;
+            if (o instanceof State other && values.size() == other.values.size()) {
                 for (int i = 0; i < values.size(); i++)
                     if (!values.get(i).equals(other.values.get(i)))
                         return false;

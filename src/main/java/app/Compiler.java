@@ -15,9 +15,10 @@ class Compiler {
         for (var op : ops)
             if (op instanceof Op.Call c)
                 c.entryPc = findFun(c.funName, ops);
-        Op.code = new Op[ops.size()];
+        var code = new Op[ops.size()];
         for (int i = 0; i < ops.size(); i++)
-            Op.code[i] = ops.get(i);
+            code[i] = ops.get(i);
+        Op.set(code);
         return findFun("main", ops);
     }
 
@@ -35,7 +36,7 @@ class Compiler {
             addNames(b, names);
         ops.add(new Op.Entry(fname));
         addOps(body, ops, names);
-        ops.add(new Op.Exit(fname));
+        ops.add(fname.equals("main") ? new Op.MainExit(fname) : new Op.Exit(fname));
     }
 
     void addOps(List<Parser.Stmt> b, List<Op> ops, List<String> names) {
