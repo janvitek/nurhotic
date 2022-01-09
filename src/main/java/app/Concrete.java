@@ -26,7 +26,7 @@ class Concrete {
             in = op.exec(in);
             App.p(App.pad(pc + " : ", 6) + App.pad(op + " ", 14) + in);
             if (obs != null)
-                obs.observe(pc);
+                obs.observe(pc, in.pc());
         }
         return in;
     }
