@@ -9,11 +9,11 @@ import app.Op.Exit;
 import app.Parser.Prog;
 
 class Abstract extends Concrete {
-    private State[] astates;
-    private State init;
-    private boolean done = false;
-    private Set<Integer> pcs = new HashSet<Integer>();
-    private Set<Integer> seens = new HashSet<Integer>();
+    protected State[] astates;
+    protected State init;
+    protected boolean done = false;
+    protected Set<Integer> pcs = new HashSet<Integer>();
+    protected Set<Integer> seens = new HashSet<Integer>();
 
     Abstract(Prog p) {
         super(p);
@@ -45,7 +45,7 @@ class Abstract extends Concrete {
         while (!done) {
             var prev = astates.clone();
             in = init;
-            execute();
+            execute(null);
             done = equals(astates, prev);
             seens = new HashSet<Integer>(); // reset the seen
         }

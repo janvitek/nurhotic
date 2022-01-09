@@ -19,12 +19,14 @@ class Concrete {
         in = new State(mainEntryPC);
     }
 
-    IState execute() {
+    IState execute(Dynamic obs) {
         int pc;
         while ((pc = in.pc()) != mainExitPC) {
             var op = Op.get(pc);
             in = op.exec(in);
             App.p(App.pad(pc + " : ", 6) + App.pad(op + " ", 14) + in);
+            if (obs != null)
+                obs.observe(pc);
         }
         return in;
     }

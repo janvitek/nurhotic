@@ -6,12 +6,16 @@ public class App {
         var p = m.parse();
         var c = new Concrete(p);
         p("Running concrete");
-        c.execute();
+        c.execute(null);
         p("Done with " + c.in.last());
         var a = new Abstract(p);
         p("Running abstract");
         var st = a.analyze();
         p("Done with " + st.last());
+        var d = new Dynamic(p);
+        p("Running dynamic");
+        d.execute(d);
+        p("Done with " + d.astates[d.astates.length - 1].last());
     }
 
     public static void p(String s) {
