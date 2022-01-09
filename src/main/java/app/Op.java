@@ -3,7 +3,7 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.AVal.BOOL;
+import app.Val.BOOL;
 
 // The instruction set of our small bytecode language
 class Op {
@@ -60,9 +60,9 @@ class Op {
         // Common behavior between userdef and builtin: marshall
         // the arguments and dereference variables
         IState exec(IState in) {
-            var ps = new ArrayList<AVal>();
+            var ps = new ArrayList<Val>();
             for (var o : args)
-                ps.add(o instanceof Integer r ? in.getRegister(r) : o instanceof AVal v ? v : null);
+                ps.add(o instanceof Integer r ? in.getRegister(r) : o instanceof Val v ? v : null);
             return in.push(entryPc, ps);
         }
 
@@ -148,7 +148,7 @@ class Op {
         // jump to targetPc if guardRegister is 0.
         IState exec(IState in) {
             var v = in.getRegister(guardRegister);
-            var eq = v.eq(new AVal(0));
+            var eq = v.eq(new Val(0));
             var next = eq == BOOL.N ? new int[] { in.pc() + 1 }
                     : eq == BOOL.Y ? new int[] { targetPc } : new int[] { in.pc() + 1, targetPc };
             return in.next(next);
@@ -178,10 +178,10 @@ class Op {
         }
 
         IState exec(IState in) {
-            var ps = new ArrayList<AVal>();
+            var ps = new ArrayList<Val>();
             for (var o : args)
-                ps.add(o instanceof Integer r ? in.getRegister(r) : (AVal) o);
-            AVal res = null;
+                ps.add(o instanceof Integer r ? in.getRegister(r) : (Val) o);
+            Val res = null;
             if (funName.equals("get")) {
                 var vec = ps.get(0);
                 var idx = ps.get(1);
@@ -192,7 +192,7 @@ class Op {
                 var val = ps.get(2);
                 res = vec.set(idx, val);
             } else if (funName.equals("c")) {
-                res = new AVal(ps);
+                res = new Val(ps);
             } else if (funName.equals("add")) {
                 var n1 = ps.get(0);
                 var n2 = ps.get(1);

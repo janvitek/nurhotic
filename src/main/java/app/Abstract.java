@@ -73,7 +73,7 @@ class Abstract extends Concrete {
             astates[pc] = astates[pc].merge(st);
     }
 
-    State builtin(Call c, List<AVal> ps, State in) {
+    State builtin(Call c, List<Val> ps, State in) {
         var funName = c.funName;
         var targetRegister = c.targetRegister;
         if (funName.equals("get")) {
@@ -88,7 +88,7 @@ class Abstract extends Concrete {
             var res = vec.set(idx, val);
             return in.set(targetRegister, res);
         } else if (funName.equals("c")) {
-            var v = new AVal(ps);
+            var v = new Val(ps);
             return in.set(targetRegister, v);
         } else if (funName.equals("add")) {
             var n1 = ps.get(0);
@@ -108,8 +108,8 @@ class Abstract extends Concrete {
     }
 
     class State implements IState {
-        List<AVal> values = new ArrayList<AVal>();
-        AVal last = AVal.bot;
+        List<Val> values = new ArrayList<Val>();
+        Val last = Val.bot;
         int pc = -1;
 
         State(int pc) {
@@ -139,7 +139,7 @@ class Abstract extends Concrete {
             return astates[nextToSee()];
         }
 
-        public State pop(AVal returnVal) {
+        public State pop(Val returnVal) {
             var nm = Op.code[pc()] instanceof Exit e ? e.funName : null;
             for (int i = 0; i < astates.length; i++)
                 if (Op.get(i) instanceof Op.Call c && c.funName.equals(nm)) {
@@ -149,7 +149,7 @@ class Abstract extends Concrete {
             return astates[nextToSee()];
         }
 
-        public State push(int entryPC, List<AVal> args) {
+        public State push(int entryPC, List<Val> args) {
             mergeState(entryPC, this);
             toSee(entryPC);
             return astates[nextToSee()];
@@ -164,30 +164,30 @@ class Abstract extends Concrete {
                 else if (i >= st.values.size())
                     res.values.add(values.get(i));
                 else
-                    res.values.add(AVal.merge(values.get(i), st.values.get(i)));
+                    res.values.add(Val.merge(values.get(i), st.values.get(i)));
             return res;
         }
 
         // Hmm... this operation modifies the current state without copying...
         // perhaps ok. but not pretty. What would be an alternative?
-        public AVal getRegister(int i) {
+        public Val getRegister(int i) {
             while (i >= values.size())
-                values.add(AVal.bot);
+                values.add(Val.bot);
             return values.get(i);
         }
 
-        public State set(int i, AVal v) {
+        public State set(int i, Val v) {
             last = v;
             var res = clone();
             while (i >= res.values.size())
-                res.values.add(AVal.bot);
+                res.values.add(Val.bot);
             if (v == null)
                 throw new RuntimeException("values can't be null");
             res.values.set(i, v);
             return res;
         }
 
-        public AVal last() {
+        public Val last() {
             return last;
         }
 

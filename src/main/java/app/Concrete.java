@@ -36,10 +36,10 @@ class Concrete {
 
 class State implements IState {
     List<Frame> stack = new ArrayList<>();
-    AVal last;
+    Val last;
 
     State(int pc) {
-        stack.add(new Frame(pc, new ArrayList<AVal>()));
+        stack.add(new Frame(pc, new ArrayList<Val>()));
     }
 
     private State(State base) {
@@ -56,7 +56,7 @@ class State implements IState {
         return stack.size();
     }
 
-    public State pop(AVal returnVal) {
+    public State pop(Val returnVal) {
         var res = new State(this);
         res.last = last();
         res.stack.remove(stack.size() - 1);
@@ -67,13 +67,13 @@ class State implements IState {
         throw new RuntimeException("Miscompilation");
     }
 
-    public State push(int entryPc, List<AVal> args) {
+    public State push(int entryPc, List<Val> args) {
         var res = new State(this);
         res.stack.add(new Frame(entryPc, args));
         return res;
     }
 
-    public State set(int reg, AVal value) {
+    public State set(int reg, Val value) {
         if (!value.isConcrete())
             throw new RuntimeException("exec error got abstract value: " + value);
         var res = new State(this);
@@ -105,7 +105,7 @@ class State implements IState {
     }
 
     // return the last value assigned in the top frame, or null
-    public AVal last() {
+    public Val last() {
         if (height() == 0)
             return last;
         else
@@ -118,17 +118,17 @@ class State implements IState {
     }
 
     // return value of register i in topmost frame
-    public AVal getRegister(int i) {
+    public Val getRegister(int i) {
         return top().get(i);
     }
 }
 
 class Frame {
     int pc;
-    List<AVal> regs = new ArrayList<AVal>();
-    AVal lastValue;
+    List<Val> regs = new ArrayList<Val>();
+    Val lastValue;
 
-    Frame(int pc, List<AVal> params) {
+    Frame(int pc, List<Val> params) {
         this.pc = pc;
         for (var v : params)
             regs.add(v);
@@ -139,18 +139,18 @@ class Frame {
         lastValue = f.lastValue;
     }
 
-    AVal get(int reg) {
+    Val get(int reg) {
         return regs.get(reg);
     }
 
-    void set(int reg, AVal value) {
+    void set(int reg, Val value) {
         lastValue = value;
         while (reg >= regs.size())
             regs.add(null);
         regs.set(reg, value);
     }
 
-    AVal last() {
+    Val last() {
         return lastValue;
     }
 

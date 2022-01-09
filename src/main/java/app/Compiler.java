@@ -44,8 +44,8 @@ class Compiler {
                 var vals = new ArrayList<Object>();
                 for (var v : o.params)
                     vals.add(switch (v.kind()) {
-                        case STR -> new AVal(v.asStr());
-                        case NUM -> new AVal(v.asNum());
+                        case STR -> new Val(v.asStr());
+                        case NUM -> new Val(v.asNum());
                         case ID -> names.indexOf(v.asId());
                         default -> null;
                     });

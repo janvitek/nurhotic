@@ -7,20 +7,20 @@ interface IState {
     // height of the stack
     int height();
 
-    IState pop(AVal returnVal);
+    IState pop(Val returnVal);
 
-    IState push(int entryPc, List<AVal> args);
+    IState push(int entryPc, List<Val> args);
 
-    IState set(int reg, AVal value);
+    IState set(int reg, Val value);
 
     IState next(int[] pcs);
 
     // return the last value assigned in the top frame, or null
-    AVal last();
+    Val last();
 
     // return the pc in the top most frame
     int pc();
 
     // return value of register i in topmost frame
-    AVal getRegister(int i);
+    Val getRegister(int i);
 }
