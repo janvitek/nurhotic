@@ -2,8 +2,6 @@ package app;
 
 import java.util.List;
 
-import app.Abstract.AVal;
-
 interface IState {
 
     // height of the stack

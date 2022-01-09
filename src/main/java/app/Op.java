@@ -3,8 +3,7 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.Abstract.AVal;
-import app.Abstract.AVal.BOOL;
+import app.AVal.BOOL;
 
 // The instruction set of our small bytecode language
 class Op {

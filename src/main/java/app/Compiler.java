@@ -3,7 +3,6 @@ package app;
 import java.util.ArrayList;
 import java.util.List;
 
-import app.Abstract.AVal;
 import app.Parser.Prog;
 
 class Compiler {
